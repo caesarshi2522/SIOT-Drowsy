@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+
+# VS Code
+.vscode/
+
+# Data logs (optional: ignore all CSV logs)
+*.csv
+data/
+
+# OS files
+.DS_Store
+Thumbs.db

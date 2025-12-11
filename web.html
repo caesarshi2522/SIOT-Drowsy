@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Drowsiness & Light Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 1.5rem 2rem 3rem;
+      background: #0f172a;
+      color: #e5e7eb;
+    }
+    h1 {
+      margin-top: 0;
+      font-size: 1.8rem;
+    }
+    .subtitle {
+      color: #9ca3af;
+      margin-bottom: 1.2rem;
+    }
+    .upload-box {
+      border: 1px dashed #4b5563;
+      padding: 1rem;
+      border-radius: 0.75rem;
+      margin-bottom: 1.2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      background: #020617;
+    }
+    .upload-box input[type="file"] {
+      color: #e5e7eb;
+    }
+    #summary {
+      font-size: 0.85rem;
+      color: #9ca3af;
+      margin-bottom: 0.5rem;
+    }
+    .range-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1.2rem;
+      font-size: 0.85rem;
+      color: #9ca3af;
+    }
+    .range-btn {
+      border: 1px solid #4b5563;
+      background: #020617;
+      color: #e5e7eb;
+      padding: 0.25rem 0.7rem;
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+    .range-btn.range-active {
+      background: #2563eb;
+      border-color: #2563eb;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .stat-card {
+      background: #020617;
+      border-radius: 0.75rem;
+      padding: 0.9rem 1rem;
+      border: 1px solid #1f2937;
+    }
+    .stat-title {
+      font-size: 0.78rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #9ca3af;
+      margin-bottom: 0.3rem;
+    }
+    .stat-value {
+      font-size: 1.3rem;
+      font-weight: 600;
+      margin-bottom: 0.15rem;
+    }
+    .stat-sub {
+      font-size: 0.78rem;
+      color: #6b7280;
+    }
+    .charts {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.5rem;
+    }
+    .chart-card {
+      background: #020617;
+      border-radius: 0.75rem;
+      padding: 1rem;
+      border: 1px solid #1f2937;
+    }
+    .chart-title {
+      font-size: 0.95rem;
+      margin-bottom: 0.6rem;
+      color: #d1d5db;
+    }
+    .footer-note {
+      margin-top: 1.5rem;
+      font-size: 0.75rem;
+      color: #6b7280;
+    }
+    a {
+      color: #60a5fa;
+    }
+  </style>
+</head>
+<body>
+  <h1>Drowsiness & Ambient Light Dashboard</h1>
+  <div class="subtitle">
+    Upload your <code>drowsy_log.csv</code> to see statistics and visualisations of your past study sessions.
+  </div>
+
+  <div class="upload-box">
+    <div>
+      <div style="font-size:0.9rem; margin-bottom:0.2rem;">1. Choose your <code>drowsy_log.csv</code> file</div>
+      <div style="font-size:0.8rem; color:#9ca3af;">
+        Expected columns: <code>timestamp, time_sec, lux, drowsy, blink_count, microsleep_events, yawn_count</code>.
+      </div>
+    </div>
+    <input type="file" id="fileInput" accept=".csv" />
+  </div>
+
+  <div id="summary"></div>
+
+  <div class="range-controls">
+    <span>Time range:</span>
+    <button class="range-btn range-active" data-range="all">All</button>
+    <button class="range-btn" data-range="1d">Last 24 h</button>
+    <button class="range-btn" data-range="7d">Last 7 days</button>
+    <button class="range-btn" data-range="30d">Last 30 days</button>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-title">Total Recording Time</div>
+      <div class="stat-value" id="statDuration">–</div>
+      <div class="stat-sub" id="statDurationSub">seconds</div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-title">Microsleep Events</div>
+      <div class="stat-value" id="statMicrosleeps">–</div>
+      <div class="stat-sub" id="statMicrosleepsSub">events per hour</div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-title">Drowsy Time</div>
+      <div class="stat-value" id="statDrowsyTime">–</div>
+      <div class="stat-sub" id="statDrowsyTimeSub">of total recording</div>
+    </div>
+
+    <div class="stat-card">
+      <div class="stat-title">Average Lux</div>
+      <div class="stat-value" id="statLuxAvg">–</div>
+      <div class="stat-sub" id="statLuxSub">overall / drowsy / awake</div>
+    </div>
+  </div>
+
+  <div class="charts">
+    <div class="chart-card">
+      <div class="chart-title">Lux & Drowsiness Density Over Time</div>
+      <canvas id="combinedChart" height="140"></canvas>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    Tip: click legend items to hide/show Lux or Drowsiness curves. Use time range buttons to focus on specific periods.
+  </div>
+
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    const rangeButtons = document.querySelectorAll('.range-btn');
+    let combinedChart = null;
+
+    // Raw data cache
+    let rawData = null;
+
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      Papa.parse(file, {
+        header: true,
+        dynamicTyping: true,
+        skipEmptyLines: true,
+        complete: (results) => {
+          const rows = results.data;
+          processData(rows);
+        }
+      });
+    });
+
+    // Time range buttons
+    rangeButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        rangeButtons.forEach(b => b.classList.remove('range-active'));
+        btn.classList.add('range-active');
+        const rangeKey = btn.getAttribute('data-range');
+        renderRange(rangeKey);
+      });
+    });
+
+    function processData(rows) {
+      const timeSec = [];
+      const lux = [];
+      const drowsy = [];
+      const microsleeps = [];
+      const timestamps = [];
+      const tsMs = [];
+
+      rows.forEach(row => {
+        const t = parseFloat(row.time_sec);
+        if (isNaN(t)) return;
+
+        const lx = row.lux === "" || row.lux === null ? NaN : parseFloat(row.lux);
+        const d = parseInt(row.drowsy, 10) || 0;
+        const ms = row.microsleep_events !== undefined && row.microsleep_events !== ""
+          ? parseInt(row.microsleep_events, 10)
+          : 0;
+
+        const tsStr = row.timestamp || row.Timestamp || "";
+        let msTime = NaN;
+        if (tsStr) {
+          const dObj = new Date(tsStr);
+          if (!isNaN(dObj)) {
+            msTime = dObj.getTime();
+          }
+        }
+
+        timeSec.push(t);
+        lux.push(lx);
+        drowsy.push(d);
+        microsleeps.push(ms);
+        timestamps.push(tsStr);
+        tsMs.push(msTime);
+      });
+
+      if (timeSec.length < 2) {
+        alert("Not enough valid data rows in the CSV.");
+        return;
+      }
+
+      rawData = { timeSec, lux, drowsy, microsleeps, timestamps, tsMs };
+      renderRange('all');
+    }
+
+    function renderRange(rangeKey) {
+      if (!rawData) return;
+
+      const { timeSec, lux, drowsy, microsleeps, timestamps, tsMs } = rawData;
+      const n = timeSec.length;
+
+      const hasValidTs = tsMs.every(ms => Number.isFinite(ms));
+      let indices = [];
+
+      if (!hasValidTs || rangeKey === 'all') {
+        indices = [...Array(n).keys()];
+      } else {
+        const maxMs = tsMs[n - 1];
+        let spanMs = Infinity;
+        if (rangeKey === '1d') spanMs = 1 * 24 * 3600 * 1000;
+        if (rangeKey === '7d') spanMs = 7 * 24 * 3600 * 1000;
+        if (rangeKey === '30d') spanMs = 30 * 24 * 3600 * 1000;
+
+        const minMs = maxMs - spanMs;
+        for (let i = 0; i < n; i++) {
+          if (tsMs[i] >= minMs) indices.push(i);
+        }
+        if (indices.length < 2) {
+          indices = [...Array(n).keys()];
+        }
+      }
+
+      const tF = indices.map(i => timeSec[i]);
+      const luxF = indices.map(i => lux[i]);
+      const dF = indices.map(i => drowsy[i]);
+      const msF = indices.map(i => microsleeps[i]);
+      const tsStrF = indices.map(i => timestamps[i]);
+      const tsMsF = indices.map(i => tsMs[i]);
+
+      updateStatsAndCharts(tF, luxF, dF, msF, tsStrF, tsMsF);
+    }
+
+    function updateStatsAndCharts(timeSec, lux, drowsy, microsleeps, tsStr, tsMs) {
+      const n = timeSec.length;
+      const useDateTime = tsMs.every(ms => Number.isFinite(ms));
+
+      // ====== Compute totalDurationSec and drowsySec based on actual recording time ======
+      let totalDurationSec = 0;
+      let drowsySec = 0;
+      const maxGapSec = 60; // Intervals longer than this are assumed gaps between sessions and excluded from total recording time
+
+      for (let i = 1; i < n; i++) {
+        let dt;
+        if (useDateTime) {
+          dt = (tsMs[i] - tsMs[i - 1]) / 1000;
+        } else {
+          dt = timeSec[i] - timeSec[i - 1];
+        }
+        if (!Number.isFinite(dt) || dt <= 0) continue;
+        if (dt > maxGapSec) continue; // Ignore large gaps between sessions
+
+        totalDurationSec += dt;
+        if (drowsy[i - 1] === 1) {
+          drowsySec += dt;
+        }
+      }
+
+      // Microsleep events derived from cumulative counter difference
+      let totalMicrosleeps = 0;
+      if (microsleeps.some(v => v > 0)) {
+        totalMicrosleeps = microsleeps[n - 1] - microsleeps[0];
+        if (totalMicrosleeps < 0) totalMicrosleeps = microsleeps[n - 1];
+      }
+
+      const durationHours = totalDurationSec / 3600;
+      const microsleepsPerHour = durationHours > 0 ? totalMicrosleeps / durationHours : 0;
+
+      // Lux statistics
+      const luxValid = lux.filter(v => !isNaN(v));
+      const meanLux = luxValid.length
+        ? luxValid.reduce((a, b) => a + b, 0) / luxValid.length
+        : NaN;
+
+      const luxDrowsy = [];
+      const luxAwake = [];
+      for (let i = 0; i < n; i++) {
+        if (isNaN(lux[i])) continue;
+        if (drowsy[i] === 1) luxDrowsy.push(lux[i]);
+        else luxAwake.push(lux[i]);
+      }
+      const meanLuxDrowsy = luxDrowsy.length
+        ? luxDrowsy.reduce((a, b) => a + b, 0) / luxDrowsy.length
+        : NaN;
+      const meanLuxAwake = luxAwake.length
+        ? luxAwake.reduce((a, b) => a + b, 0) / luxAwake.length
+        : NaN;
+
+      // ====== Update statistic cards ======
+      document.getElementById('statDuration').textContent =
+        formatDuration(totalDurationSec);
+      document.getElementById('statDurationSub').textContent =
+        `${totalDurationSec.toFixed(0)} seconds total`;
+
+      document.getElementById('statMicrosleeps').textContent =
+        isFinite(totalMicrosleeps) ? totalMicrosleeps : "–";
+      document.getElementById('statMicrosleepsSub').textContent =
+        durationHours > 0
+          ? microsleepsPerHour.toFixed(2) + " events/hour"
+          : "events per hour";
+
+      const drowsyPercent =
+        totalDurationSec > 0 ? (drowsySec / totalDurationSec) * 100 : 0;
+      document.getElementById('statDrowsyTime').textContent =
+        formatDuration(drowsySec);
+      document.getElementById('statDrowsyTimeSub').textContent =
+        drowsyPercent.toFixed(1) + "% of total time";
+
+      const luxText = [
+        !isNaN(meanLux) ? meanLux.toFixed(1) + " lx" : "–",
+        !isNaN(meanLuxDrowsy) ? meanLuxDrowsy.toFixed(1) + " lx" : "–",
+        !isNaN(meanLuxAwake) ? meanLuxAwake.toFixed(1) + " lx" : "–",
+      ];
+      document.getElementById('statLuxAvg').textContent = luxText[0];
+      document.getElementById('statLuxSub').textContent =
+        `overall: ${luxText[0]} | drowsy: ${luxText[1]} | awake: ${luxText[2]}`;
+
+      // ====== Summary text (calendar span; different concept from totalDurationSec) ======
+      const summaryEl = document.getElementById('summary');
+      let summaryText = "";
+      if (useDateTime && tsStr[0] && tsStr[n - 1]) {
+        const firstTs = tsStr[0];
+        const lastTs = tsStr[n - 1];
+        const firstDate = new Date(firstTs);
+        const lastDate = new Date(lastTs);
+        let spanDaysStr = "";
+        if (!isNaN(firstDate) && !isNaN(lastDate)) {
+          const spanMs = lastDate - firstDate;
+          const spanDays = spanMs / (1000 * 60 * 60 * 24);
+          spanDaysStr = ` (span ≈ ${spanDays.toFixed(2)} days)`;
+        }
+        summaryText =
+          `From ${firstTs} to ${lastTs}${spanDaysStr}. ` +
+          `Loaded ${n} samples. `;
+      } else {
+        summaryText =
+          `Loaded ${n} samples from ${timeSec[0].toFixed(1)}s to ${timeSec[n - 1].toFixed(1)}s. `;
+      }
+      summaryText += `Detected ${totalMicrosleeps} microsleep events and ` +
+                     `${drowsyPercent.toFixed(1)}% of time marked as drowsy.`;
+      summaryEl.textContent = summaryText;
+
+      // ====== Chart data: aggregate Lux & drowsiness density in fixed windows ======
+      const windowSec = 60; // One point every 60 seconds
+      let bucketTimes = [];
+      let bucketLux = [];
+      let bucketDrowsyDensity = [];
+
+      if (n > 1) {
+        if (useDateTime) {
+          const windowMs = windowSec * 1000;
+          let bucketStart = tsMs[0];
+          let sumLux = 0;
+          let cntLux = 0;
+          let cntSamples = 0;
+          let cntDrowsy = 0;
+
+          for (let i = 0; i < n; i++) {
+            const ms = tsMs[i];
+            if (ms - bucketStart <= windowMs) {
+              if (!isNaN(lux[i])) {
+                sumLux += lux[i];
+                cntLux += 1;
+              }
+              cntSamples += 1;
+              if (drowsy[i] === 1) cntDrowsy += 1;
+            } else {
+              if (cntSamples > 0) {
+                bucketTimes.push(bucketStart + windowMs / 2);
+                bucketLux.push(cntLux > 0 ? sumLux / cntLux : NaN);
+                bucketDrowsyDensity.push(cntDrowsy / cntSamples);
+              }
+              bucketStart = ms;
+              sumLux = !isNaN(lux[i]) ? lux[i] : 0;
+              cntLux = !isNaN(lux[i]) ? 1 : 0;
+              cntSamples = 1;
+              cntDrowsy = drowsy[i] === 1 ? 1 : 0;
+            }
+          }
+          if (cntSamples > 0) {
+            bucketTimes.push(bucketStart + windowMs / 2);
+            bucketLux.push(cntLux > 0 ? sumLux / cntLux : NaN);
+            bucketDrowsyDensity.push(cntDrowsy / cntSamples);
+          }
+        } else {
+          let bucketStart = timeSec[0];
+          let sumLux = 0;
+          let cntLux = 0;
+          let cntSamples = 0;
+          let cntDrowsy = 0;
+
+          for (let i = 0; i < n; i++) {
+            const t = timeSec[i];
+            if (t - bucketStart <= windowSec) {
+              if (!isNaN(lux[i])) {
+                sumLux += lux[i];
+                cntLux += 1;
+              }
+              cntSamples += 1;
+              if (drowsy[i] === 1) cntDrowsy += 1;
+            } else {
+              if (cntSamples > 0) {
+                bucketTimes.push(bucketStart + windowSec / 2);
+                bucketLux.push(cntLux > 0 ? sumLux / cntLux : NaN);
+                bucketDrowsyDensity.push(cntDrowsy / cntSamples);
+              }
+              bucketStart = t;
+              sumLux = !isNaN(lux[i]) ? lux[i] : 0;
+              cntLux = !isNaN(lux[i]) ? 1 : 0;
+              cntSamples = 1;
+              cntDrowsy = drowsy[i] === 1 ? 1 : 0;
+            }
+          }
+          if (cntSamples > 0) {
+            bucketTimes.push(bucketStart + windowSec / 2);
+            bucketLux.push(cntLux > 0 ? sumLux / cntLux : NaN);
+            bucketDrowsyDensity.push(cntDrowsy / cntSamples);
+          }
+        }
+      }
+
+      if (bucketTimes.length === 0) {
+        if (useDateTime) {
+          bucketTimes = tsMs;
+        } else {
+          bucketTimes = timeSec;
+        }
+        bucketLux = lux;
+        bucketDrowsyDensity = drowsy.map(v => v);
+      }
+
+      const labels = useDateTime
+        ? bucketTimes.map(ms => formatTimeLabel(new Date(ms)))
+        : bucketTimes.map(t => t.toFixed(1) + "s");
+
+      if (combinedChart) combinedChart.destroy();
+
+      const ctx = document.getElementById('combinedChart').getContext('2d');
+      combinedChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: 'Lux',
+              data: bucketLux,
+              borderWidth: 1.5,
+              tension: 0.2,
+              pointRadius: 0,
+              yAxisID: 'yLux'
+            },
+            {
+              label: 'Drowsiness density',
+              data: bucketDrowsyDensity,
+              borderWidth: 1.5,
+              tension: 0.2,
+              pointRadius: 0,
+              yAxisID: 'yDrowsy'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          interaction: {
+            mode: 'index',
+            intersect: false
+          },
+          scales: {
+            x: {
+              title: { display: true, text: useDateTime ? 'Time' : 'Time (s)' },
+              ticks: {
+                maxRotation: 45,
+                minRotation: 0,
+                autoSkip: true
+              }
+            },
+            yLux: {
+              type: 'linear',
+              position: 'left',
+              title: { display: true, text: 'Lux' }
+            },
+            yDrowsy: {
+              type: 'linear',
+              position: 'right',
+              title: { display: true, text: 'Drowsiness density (0–1)' },
+              min: 0,
+              max: 1,
+              ticks: {
+                stepSize: 0.25
+              },
+              grid: {
+                drawOnChartArea: false
+              }
+            }
+          },
+          plugins: {
+            legend: { display: true }
+          }
+        }
+      });
+    }
+
+    function formatDuration(sec) {
+      if (!isFinite(sec) || sec <= 0) return "0s";
+      const minutes = Math.floor(sec / 60);
+      const seconds = Math.round(sec % 60);
+      if (minutes === 0) return `${seconds}s`;
+      return `${minutes}m ${seconds}s`;
+    }
+
+    function formatTimeLabel(d) {
+      if (!(d instanceof Date) || isNaN(d)) return "";
+      const pad = (n) => String(n).padStart(2, '0');
+      const mm = pad(d.getMonth() + 1);
+      const dd = pad(d.getDate());
+      const hh = pad(d.getHours());
+      const mi = pad(d.getMinutes());
+      return `${mm}-${dd} ${hh}:${mi}`;
+    }
+  </script>
+</body>
+</html>
